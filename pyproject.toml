@@ -1,0 +1,31 @@
+[project]
+name = "finalproject-belyaeva-26-555"
+version = "0.1.0"
+description = "Консольное приложение «Валютный кошелёк»"
+readme = "README.md"
+authors = [
+    { name = "Aksiniya Belyaeva", email = "aksiniya.belyaeva@yandex.ru" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "prettytable>=3.18.0",
+]
+
+[project.scripts]
+finalproject-belyaeva-26-555 = "finalproject_belyaeva_26_555:main"
+
+[build-system]
+requires = ["uv_build>=0.12.20,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.1",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

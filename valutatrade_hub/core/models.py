@@ -73,3 +73,51 @@ class User:
     def verify_password(self, password: str) -> bool:
         """Проверяет, совпадает ли пароль с сохранённым хешем."""
         return self._hash_password(password) == self._hashed_password
+
+
+class Wallet:
+    """Кошелёк пользователя для одной валюты."""
+
+    def __init__(self, currency_code: str, balance: float = 0.0):
+        self.currency_code = currency_code
+        self.balance = balance
+
+    @property
+    def balance(self) -> float:
+        """Текущий баланс."""
+        return self._balance
+
+    @balance.setter
+    def balance(self, value: float) -> None:
+        """Устанавливает баланс с проверками типа и знака."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError("Баланс должен быть числом")
+        if value < 0:
+            raise ValueError("Баланс не может быть отрицательным")
+        self._balance = float(value)
+
+
+    def _check_amount(self, amount: float) -> None:
+        """Проверяет, что сумма — положительное число."""
+        is_number = isinstance(amount, (int, float)) and not isinstance(amount, bool)
+        if not is_number or amount <= 0:
+            raise ValueError("'amount' должен быть положительным числом")
+
+    def deposit(self, amount: float) -> None:
+        """Пополняет баланс на указанную сумму."""
+        self._check_amount(amount)
+        self.balance += amount
+
+    def withdraw(self, amount: float) -> None:
+        """Снимает средства, если их достаточно."""
+        self._check_amount(amount)
+        if amount > self._balance:
+            raise ValueError(
+                f"Недостаточно средств: доступно {self._balance:.4f} "
+                f"{self.currency_code}, требуется {amount:.4f} {self.currency_code}"
+            )
+        self.balance -= amount
+
+    def get_balance_info(self) -> str:
+        """Возвращает строку с информацией о балансе."""
+        return f"{self.currency_code}: {self._balance:.4f}"

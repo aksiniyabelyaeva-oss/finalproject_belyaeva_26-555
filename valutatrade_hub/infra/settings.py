@@ -9,10 +9,13 @@ DEFAULT_SETTINGS = {
     "users_file": "users.json",
     "portfolios_file": "portfolios.json",
     "rates_file": "rates.json",
+    "history_file": "exchange_rates.json",
     "rates_ttl_seconds": 300,
     "base_currency": "USD",
     "log_dir": "logs",
     "log_file": "actions.log",
+    "parser_log_file": "parser.log",
+    "parser_interval_seconds": 3600,
     "log_level": "INFO",
 }
 

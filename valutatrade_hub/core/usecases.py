@@ -128,3 +128,48 @@ def get_rate(from_code: str, to_code: str) -> dict:
     rates["last_refresh"] = now.isoformat()
     save_json(RATES_FILE, rates)
     return {"rate": rate, "updated_at": now}
+
+
+def load_portfolio(user_id: int) -> Portfolio:
+    """Загружает портфель пользователя из файла (или создаёт пустой)."""
+    for item in load_json(PORTFOLIOS_FILE, []):
+        if item["user_id"] == user_id:
+            return dict_to_portfolio(item)
+    return Portfolio(user_id)
+
+
+def save_portfolio(portfolio: Portfolio) -> None:
+    """Сохраняет портфель пользователя в файл."""
+    portfolios = load_json(PORTFOLIOS_FILE, [])
+    new_item = portfolio_to_dict(portfolio)
+    found = False
+    for index, item in enumerate(portfolios):
+        if item["user_id"] == portfolio.user_id:
+            portfolios[index] = new_item
+            found = True
+    if not found:
+        portfolios.append(new_item)
+    save_json(PORTFOLIOS_FILE, portfolios)
+
+
+def convert(amount: float, from_code: str, to_code: str) -> float:
+    """Переводит сумму из одной валюты в другую по текущему курсу."""
+    if from_code == to_code:
+        return amount
+    return amount * get_rate(from_code, to_code)["rate"]
+
+
+def show_portfolio(base_currency: str = "USD") -> dict:
+    """Собирает данные портфеля вошедшего пользователя в базовой валюте."""
+    user = get_current_user()
+    base = base_currency.strip().upper()
+    if base not in EXCHANGE_RATES:
+        raise ValueError(f"Неизвестная базовая валюта '{base}'")
+    portfolio = load_portfolio(user.user_id)
+    rows = []
+    total = 0.0
+    for code, wallet in portfolio.wallets.items():
+        value = convert(wallet.balance, code, base)
+        rows.append({"currency": code, "balance": wallet.balance, "value": value})
+        total += value
+    return {"username": user.username, "base": base, "rows": rows, "total": total}

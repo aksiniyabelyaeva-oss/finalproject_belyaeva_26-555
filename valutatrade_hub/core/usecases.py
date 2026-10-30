@@ -1,6 +1,13 @@
+import secrets
 from datetime import datetime
 
 from valutatrade_hub.core.models import Portfolio, User, Wallet
+from valutatrade_hub.core.utils import (
+    PORTFOLIOS_FILE,
+    USERS_FILE,
+    load_json,
+    save_json,
+)
 
 
 def user_to_dict(user: User) -> dict:
@@ -39,3 +46,24 @@ def dict_to_portfolio(data: dict) -> Portfolio:
     for code, info in data["wallets"].items():
         wallets[code] = Wallet(code, info["balance"])
     return Portfolio(data["user_id"], wallets)
+
+
+def register_user(username: str, password: str) -> User:
+    """Регистрирует нового пользователя и создаёт ему пустой портфель."""
+    users = load_json(USERS_FILE, [])
+    for item in users:
+        if item["username"] == username.strip():
+            raise ValueError(f"Имя пользователя '{username}' уже занято")
+
+    user_id = len(users) + 1
+    salt = secrets.token_hex(4)
+    user = User(user_id, username, "", salt, datetime.now())
+    user.change_password(password)
+
+    users.append(user_to_dict(user))
+    save_json(USERS_FILE, users)
+
+    portfolios = load_json(PORTFOLIOS_FILE, [])
+    portfolios.append(portfolio_to_dict(Portfolio(user_id)))
+    save_json(PORTFOLIOS_FILE, portfolios)
+    return user

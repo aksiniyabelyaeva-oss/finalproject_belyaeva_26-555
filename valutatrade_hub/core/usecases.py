@@ -192,6 +192,16 @@ def get_or_create_wallet(portfolio: Portfolio, code: str) -> Wallet:
     return wallet
 
 
+def get_rate_to_base(code: str) -> float:
+    """Возвращает курс валюты к базовой (USD) или ошибку из задания."""
+    if code == BASE_CURRENCY:
+        return 1.0
+    try:
+        return get_rate(code, BASE_CURRENCY)["rate"]
+    except ValueError:
+        raise ValueError(f"Не удалось получить курс для {code}→{BASE_CURRENCY}")
+
+
 def buy_currency(currency: str, amount: float) -> dict:
     """Покупает валюту: списывает USD и пополняет кошелёк покупаемой валюты."""
     user = get_current_user()
@@ -203,14 +213,9 @@ def buy_currency(currency: str, amount: float) -> dict:
     wallet = get_or_create_wallet(portfolio, code)
     balance_before = wallet.balance
 
-    rate = 1.0
+    rate = get_rate_to_base(code)
     if code != BASE_CURRENCY:
-        try:
-            rate = get_rate(code, BASE_CURRENCY)["rate"]
-        except ValueError:
-            raise ValueError(f"Не удалось получить курс для {code}→{BASE_CURRENCY}")
         get_or_create_wallet(portfolio, BASE_CURRENCY).withdraw(amount * rate)
-
     wallet.deposit(amount)
     save_portfolio(portfolio)
     return {
@@ -220,4 +225,35 @@ def buy_currency(currency: str, amount: float) -> dict:
         "before": balance_before,
         "after": wallet.balance,
         "cost": amount * rate,
+    }
+
+
+def sell_currency(currency: str, amount: float) -> dict:
+    """Продаёт валюту: списывает её с кошелька и начисляет USD."""
+    user = get_current_user()
+    code = currency.strip().upper()
+    if not code:
+        raise ValueError("Код валюты не может быть пустым")
+    validate_amount(amount)
+    portfolio = load_portfolio(user.user_id)
+    wallet = portfolio.get_wallet(code)
+    if wallet is None:
+        raise ValueError(
+            f"У вас нет кошелька '{code}'. Добавьте валюту: "
+            "она создаётся автоматически при первой покупке."
+        )
+    balance_before = wallet.balance
+
+    rate = get_rate_to_base(code)
+    wallet.withdraw(amount)
+    if code != BASE_CURRENCY:
+        get_or_create_wallet(portfolio, BASE_CURRENCY).deposit(amount * rate)
+    save_portfolio(portfolio)
+    return {
+        "currency": code,
+        "amount": amount,
+        "rate": rate,
+        "before": balance_before,
+        "after": wallet.balance,
+        "revenue": amount * rate,
     }

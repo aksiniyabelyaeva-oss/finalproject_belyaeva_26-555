@@ -1,6 +1,8 @@
 import secrets
 from datetime import datetime
 
+from valutatrade_hub.core.currencies import get_currency
+from valutatrade_hub.core.exceptions import ApiRequestError
 from valutatrade_hub.core.models import EXCHANGE_RATES, Portfolio, User, Wallet
 from valutatrade_hub.core.utils import (
     PORTFOLIOS_FILE,
@@ -9,6 +11,7 @@ from valutatrade_hub.core.utils import (
     load_json,
     save_json,
 )
+
 
 RATES_TTL_SECONDS = 300
 
@@ -106,10 +109,8 @@ def fetch_rate_from_stub(from_code: str, to_code: str) -> float | None:
 
 def get_rate(from_code: str, to_code: str) -> dict:
     """Возвращает курс from→to из свежего кеша или из заглушки."""
-    from_code = from_code.strip().upper()
-    to_code = to_code.strip().upper()
-    if not from_code or not to_code:
-        raise ValueError("Код валюты не может быть пустым")
+    from_code = get_currency(from_code).code
+    to_code = get_currency(to_code).code
 
     key = f"{from_code}_{to_code}"
     rates = load_json(RATES_FILE, {})
@@ -121,9 +122,7 @@ def get_rate(from_code: str, to_code: str) -> dict:
 
     rate = fetch_rate_from_stub(from_code, to_code)
     if rate is None:
-        raise ValueError(
-            f"Курс {from_code}→{to_code} недоступен. Повторите попытку позже."
-        )
+        raise ApiRequestError(f"курс {from_code}→{to_code} недоступен")
     now = datetime.now()
     rates[key] = {"rate": rate, "updated_at": now.isoformat()}
     rates["source"] = "Stub"
@@ -193,21 +192,16 @@ def get_or_create_wallet(portfolio: Portfolio, code: str) -> Wallet:
 
 
 def get_rate_to_base(code: str) -> float:
-    """Возвращает курс валюты к базовой (USD) или ошибку из задания."""
+    """Возвращает курс валюты к базовой (USD)."""
     if code == BASE_CURRENCY:
         return 1.0
-    try:
-        return get_rate(code, BASE_CURRENCY)["rate"]
-    except ValueError:
-        raise ValueError(f"Не удалось получить курс для {code}→{BASE_CURRENCY}")
+    return get_rate(code, BASE_CURRENCY)["rate"]
 
 
 def buy_currency(currency: str, amount: float) -> dict:
     """Покупает валюту: списывает USD и пополняет кошелёк покупаемой валюты."""
     user = get_current_user()
-    code = currency.strip().upper()
-    if not code:
-        raise ValueError("Код валюты не может быть пустым")
+    code = get_currency(currency).code
     validate_amount(amount)
     portfolio = load_portfolio(user.user_id)
     wallet = get_or_create_wallet(portfolio, code)
@@ -231,9 +225,7 @@ def buy_currency(currency: str, amount: float) -> dict:
 def sell_currency(currency: str, amount: float) -> dict:
     """Продаёт валюту: списывает её с кошелька и начисляет USD."""
     user = get_current_user()
-    code = currency.strip().upper()
-    if not code:
-        raise ValueError("Код валюты не может быть пустым")
+    code = get_currency(currency).code
     validate_amount(amount)
     portfolio = load_portfolio(user.user_id)
     wallet = portfolio.get_wallet(code)

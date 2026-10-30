@@ -1,5 +1,11 @@
 import shlex
 
+from valutatrade_hub.core.currencies import CURRENCIES
+from valutatrade_hub.core.exceptions import (
+    ApiRequestError,
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
 from valutatrade_hub.core.usecases import (
     BASE_CURRENCY,
     buy_currency,
@@ -9,6 +15,8 @@ from valutatrade_hub.core.usecases import (
     sell_currency,
     show_portfolio,
 )
+from valutatrade_hub.core.utils import format_rate
+from valutatrade_hub.logging_config import setup_logging
 
 
 def print_help() -> None:
@@ -50,13 +58,6 @@ def parse_amount(text: str) -> float:
         return float(text)
     except ValueError:
         raise ValueError("'amount' должен быть положительным числом")
-
-
-def format_rate(rate: float) -> str:
-    """Форматирует курс: большие числа с 2 знаками, маленькие с 8."""
-    if rate >= 1:
-        return f"{rate:.2f}"
-    return f"{rate:.8f}"
 
 
 def handle_register(options: dict) -> None:
@@ -153,6 +154,7 @@ HANDLERS = {
 
 def run() -> None:
     """Главный цикл: читает команды и вызывает нужные обработчики."""
+    setup_logging()
     print_help()
     while True:
         line = input(">>> ").strip()
@@ -168,5 +170,12 @@ def run() -> None:
                 print(f"Неизвестная команда '{command}'. Введите help.")
                 continue
             handler(parse_options(tokens[1:]))
+        except InsufficientFundsError as error:
+            print(error)
+        except CurrencyNotFoundError as error:
+            codes = ", ".join(CURRENCIES)
+            print(f"{error}. Поддерживаемые коды: {codes}")
+        except ApiRequestError as error:
+            print(f"{error}. Повторите попытку позже или проверьте сеть.")
         except ValueError as error:
             print(error)

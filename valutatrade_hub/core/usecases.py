@@ -1,18 +1,19 @@
 import secrets
 from datetime import datetime
 
+from valutatrade_hub.core.currencies import get_currency
+from valutatrade_hub.core.exceptions import ApiRequestError
 from valutatrade_hub.core.models import EXCHANGE_RATES, Portfolio, User, Wallet
-from valutatrade_hub.core.utils import (
-    PORTFOLIOS_FILE,
-    RATES_FILE,
-    USERS_FILE,
-    load_json,
-    save_json,
-)
+from valutatrade_hub.core.utils import validate_amount
+from valutatrade_hub.decorators import log_action
+from valutatrade_hub.infra.database import DatabaseManager
+from valutatrade_hub.infra.settings import SettingsLoader
 
-RATES_TTL_SECONDS = 300
+settings = SettingsLoader()
+db = DatabaseManager()
 
-BASE_CURRENCY = "USD"
+RATES_TTL_SECONDS = settings.get("rates_ttl_seconds")
+BASE_CURRENCY = settings.get("base_currency")
 
 
 def user_to_dict(user: User) -> dict:
@@ -55,7 +56,7 @@ def dict_to_portfolio(data: dict) -> Portfolio:
 
 def register_user(username: str, password: str) -> User:
     """Регистрирует нового пользователя и создаёт ему пустой портфель."""
-    users = load_json(USERS_FILE, [])
+    users = db.load("users", [])
     for item in users:
         if item["username"] == username.strip():
             raise ValueError(f"Имя пользователя '{username}' уже занято")
@@ -66,19 +67,20 @@ def register_user(username: str, password: str) -> User:
     user.change_password(password)
 
     users.append(user_to_dict(user))
-    save_json(USERS_FILE, users)
+    db.save("users", users)
 
-    portfolios = load_json(PORTFOLIOS_FILE, [])
+    portfolios = db.load("portfolios", [])
     portfolios.append(portfolio_to_dict(Portfolio(user_id)))
-    save_json(PORTFOLIOS_FILE, portfolios)
+    db.save("portfolios", portfolios)
     return user
+
 
 _session = {"user": None}
 
 
 def login_user(username: str, password: str) -> User:
     """Проверяет логин и пароль и запоминает вошедшего пользователя."""
-    users = load_json(USERS_FILE, [])
+    users = db.load("users", [])
     for item in users:
         if item["username"] == username.strip():
             user = dict_to_user(item)
@@ -106,13 +108,11 @@ def fetch_rate_from_stub(from_code: str, to_code: str) -> float | None:
 
 def get_rate(from_code: str, to_code: str) -> dict:
     """Возвращает курс from→to из свежего кеша или из заглушки."""
-    from_code = from_code.strip().upper()
-    to_code = to_code.strip().upper()
-    if not from_code or not to_code:
-        raise ValueError("Код валюты не может быть пустым")
+    from_code = get_currency(from_code).code
+    to_code = get_currency(to_code).code
 
     key = f"{from_code}_{to_code}"
-    rates = load_json(RATES_FILE, {})
+    rates = db.load("rates", {})
     cached = rates.get(key)
     if cached is not None:
         updated_at = datetime.fromisoformat(cached["updated_at"])
@@ -121,20 +121,18 @@ def get_rate(from_code: str, to_code: str) -> dict:
 
     rate = fetch_rate_from_stub(from_code, to_code)
     if rate is None:
-        raise ValueError(
-            f"Курс {from_code}→{to_code} недоступен. Повторите попытку позже."
-        )
+        raise ApiRequestError(f"курс {from_code}→{to_code} недоступен")
     now = datetime.now()
     rates[key] = {"rate": rate, "updated_at": now.isoformat()}
     rates["source"] = "Stub"
     rates["last_refresh"] = now.isoformat()
-    save_json(RATES_FILE, rates)
+    db.save("rates", rates)
     return {"rate": rate, "updated_at": now}
 
 
 def load_portfolio(user_id: int) -> Portfolio:
     """Загружает портфель пользователя из файла (или создаёт пустой)."""
-    for item in load_json(PORTFOLIOS_FILE, []):
+    for item in db.load("portfolios", []):
         if item["user_id"] == user_id:
             return dict_to_portfolio(item)
     return Portfolio(user_id)
@@ -142,7 +140,7 @@ def load_portfolio(user_id: int) -> Portfolio:
 
 def save_portfolio(portfolio: Portfolio) -> None:
     """Сохраняет портфель пользователя в файл."""
-    portfolios = load_json(PORTFOLIOS_FILE, [])
+    portfolios = db.load("portfolios", [])
     new_item = portfolio_to_dict(portfolio)
     found = False
     for index, item in enumerate(portfolios):
@@ -151,7 +149,7 @@ def save_portfolio(portfolio: Portfolio) -> None:
             found = True
     if not found:
         portfolios.append(new_item)
-    save_json(PORTFOLIOS_FILE, portfolios)
+    db.save("portfolios", portfolios)
 
 
 def convert(amount: float, from_code: str, to_code: str) -> float:
@@ -177,13 +175,6 @@ def show_portfolio(base_currency: str = "USD") -> dict:
     return {"username": user.username, "base": base, "rows": rows, "total": total}
 
 
-def validate_amount(amount: float) -> None:
-    """Проверяет, что сумма — положительное число."""
-    is_number = isinstance(amount, (int, float)) and not isinstance(amount, bool)
-    if not is_number or amount <= 0:
-        raise ValueError("'amount' должен быть положительным числом")
-
-
 def get_or_create_wallet(portfolio: Portfolio, code: str) -> Wallet:
     """Возвращает кошелёк валюты, создавая его, если его ещё нет."""
     wallet = portfolio.get_wallet(code)
@@ -193,21 +184,17 @@ def get_or_create_wallet(portfolio: Portfolio, code: str) -> Wallet:
 
 
 def get_rate_to_base(code: str) -> float:
-    """Возвращает курс валюты к базовой (USD) или ошибку из задания."""
+    """Возвращает курс валюты к базовой (USD)."""
     if code == BASE_CURRENCY:
         return 1.0
-    try:
-        return get_rate(code, BASE_CURRENCY)["rate"]
-    except ValueError:
-        raise ValueError(f"Не удалось получить курс для {code}→{BASE_CURRENCY}")
+    return get_rate(code, BASE_CURRENCY)["rate"]
 
 
+@log_action("BUY", get_current_user, verbose=True)
 def buy_currency(currency: str, amount: float) -> dict:
     """Покупает валюту: списывает USD и пополняет кошелёк покупаемой валюты."""
     user = get_current_user()
-    code = currency.strip().upper()
-    if not code:
-        raise ValueError("Код валюты не может быть пустым")
+    code = get_currency(currency).code
     validate_amount(amount)
     portfolio = load_portfolio(user.user_id)
     wallet = get_or_create_wallet(portfolio, code)
@@ -228,12 +215,11 @@ def buy_currency(currency: str, amount: float) -> dict:
     }
 
 
+@log_action("SELL", get_current_user, verbose=True)
 def sell_currency(currency: str, amount: float) -> dict:
     """Продаёт валюту: списывает её с кошелька и начисляет USD."""
     user = get_current_user()
-    code = currency.strip().upper()
-    if not code:
-        raise ValueError("Код валюты не может быть пустым")
+    code = get_currency(currency).code
     validate_amount(amount)
     portfolio = load_portfolio(user.user_id)
     wallet = portfolio.get_wallet(code)

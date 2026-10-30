@@ -30,3 +30,6 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[project.scripts]
+project = "valutatrade_hub.cli.interface:run"

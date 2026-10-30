@@ -4,18 +4,14 @@ from datetime import datetime
 from valutatrade_hub.core.currencies import get_currency
 from valutatrade_hub.core.exceptions import ApiRequestError
 from valutatrade_hub.core.models import EXCHANGE_RATES, Portfolio, User, Wallet
-from valutatrade_hub.core.utils import (
-    PORTFOLIOS_FILE,
-    RATES_FILE,
-    USERS_FILE,
-    load_json,
-    save_json,
-)
+from valutatrade_hub.infra.database import DatabaseManager
+from valutatrade_hub.infra.settings import SettingsLoader
 
+settings = SettingsLoader()
+db = DatabaseManager()
 
-RATES_TTL_SECONDS = 300
-
-BASE_CURRENCY = "USD"
+RATES_TTL_SECONDS = settings.get("rates_ttl_seconds")
+BASE_CURRENCY = settings.get("base_currency")
 
 
 def user_to_dict(user: User) -> dict:
@@ -58,7 +54,7 @@ def dict_to_portfolio(data: dict) -> Portfolio:
 
 def register_user(username: str, password: str) -> User:
     """Регистрирует нового пользователя и создаёт ему пустой портфель."""
-    users = load_json(USERS_FILE, [])
+    users = db.load("users", [])
     for item in users:
         if item["username"] == username.strip():
             raise ValueError(f"Имя пользователя '{username}' уже занято")
@@ -69,19 +65,20 @@ def register_user(username: str, password: str) -> User:
     user.change_password(password)
 
     users.append(user_to_dict(user))
-    save_json(USERS_FILE, users)
+    db.save("users", users)
 
-    portfolios = load_json(PORTFOLIOS_FILE, [])
+    portfolios = db.load("portfolios", [])
     portfolios.append(portfolio_to_dict(Portfolio(user_id)))
-    save_json(PORTFOLIOS_FILE, portfolios)
+    db.save("portfolios", portfolios)
     return user
+
 
 _session = {"user": None}
 
 
 def login_user(username: str, password: str) -> User:
     """Проверяет логин и пароль и запоминает вошедшего пользователя."""
-    users = load_json(USERS_FILE, [])
+    users = db.load("users", [])
     for item in users:
         if item["username"] == username.strip():
             user = dict_to_user(item)
@@ -113,7 +110,7 @@ def get_rate(from_code: str, to_code: str) -> dict:
     to_code = get_currency(to_code).code
 
     key = f"{from_code}_{to_code}"
-    rates = load_json(RATES_FILE, {})
+    rates = db.load("rates", {})
     cached = rates.get(key)
     if cached is not None:
         updated_at = datetime.fromisoformat(cached["updated_at"])
@@ -127,13 +124,13 @@ def get_rate(from_code: str, to_code: str) -> dict:
     rates[key] = {"rate": rate, "updated_at": now.isoformat()}
     rates["source"] = "Stub"
     rates["last_refresh"] = now.isoformat()
-    save_json(RATES_FILE, rates)
+    db.save("rates", rates)
     return {"rate": rate, "updated_at": now}
 
 
 def load_portfolio(user_id: int) -> Portfolio:
     """Загружает портфель пользователя из файла (или создаёт пустой)."""
-    for item in load_json(PORTFOLIOS_FILE, []):
+    for item in db.load("portfolios", []):
         if item["user_id"] == user_id:
             return dict_to_portfolio(item)
     return Portfolio(user_id)
@@ -141,7 +138,7 @@ def load_portfolio(user_id: int) -> Portfolio:
 
 def save_portfolio(portfolio: Portfolio) -> None:
     """Сохраняет портфель пользователя в файл."""
-    portfolios = load_json(PORTFOLIOS_FILE, [])
+    portfolios = db.load("portfolios", [])
     new_item = portfolio_to_dict(portfolio)
     found = False
     for index, item in enumerate(portfolios):
@@ -150,7 +147,7 @@ def save_portfolio(portfolio: Portfolio) -> None:
             found = True
     if not found:
         portfolios.append(new_item)
-    save_json(PORTFOLIOS_FILE, portfolios)
+    db.save("portfolios", portfolios)
 
 
 def convert(amount: float, from_code: str, to_code: str) -> float:

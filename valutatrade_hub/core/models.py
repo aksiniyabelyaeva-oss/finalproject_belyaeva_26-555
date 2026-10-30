@@ -2,6 +2,16 @@ import hashlib
 from datetime import datetime
 
 
+# Фиксированные курсы: сколько долларов стоит 1 единица валюты
+EXCHANGE_RATES = {
+    "USD": 1.0,
+    "EUR": 1.0786,
+    "BTC": 59337.21,
+    "RUB": 0.01016,
+    "ETH": 3720.0,
+}
+
+
 class User:
     """Пользователь системы."""
 
@@ -121,3 +131,49 @@ class Wallet:
     def get_balance_info(self) -> str:
         """Возвращает строку с информацией о балансе."""
         return f"{self.currency_code}: {self._balance:.4f}"
+
+
+class Portfolio:
+    """Портфель пользователя: набор кошельков по разным валютам."""
+
+    def __init__(self, user_id: int, wallets: dict | None = None):
+        self._user_id = user_id
+        self._wallets = wallets if wallets is not None else {}
+
+    @property
+    def user_id(self) -> int:
+        """Идентификатор владельца портфеля."""
+        return self._user_id
+
+    @property
+    def wallets(self) -> dict:
+        """Копия словаря кошельков."""
+        return dict(self._wallets)
+
+    def add_currency(self, currency_code: str) -> Wallet:
+        """Создаёт новый кошелёк для валюты, если его ещё нет."""
+        code = currency_code.strip().upper()
+        if not code:
+            raise ValueError("Код валюты не может быть пустым")
+        if code in self._wallets:
+            raise ValueError(f"Кошелёк '{code}' уже существует")
+        wallet = Wallet(code)
+        self._wallets[code] = wallet
+        return wallet
+
+    def get_wallet(self, currency_code: str) -> Wallet | None:
+        """Возвращает кошелёк по коду валюты или None, если его нет."""
+        return self._wallets.get(currency_code.strip().upper())
+
+
+    def get_total_value(self, base_currency: str = "USD") -> float:
+        """Считает общую стоимость всех кошельков в базовой валюте."""
+        base = base_currency.strip().upper()
+        if base not in EXCHANGE_RATES:
+            raise ValueError(f"Неизвестная базовая валюта '{base}'")
+        total_usd = 0.0
+        for code, wallet in self._wallets.items():
+            if code not in EXCHANGE_RATES:
+                raise ValueError(f"Нет курса для валюты '{code}'")
+            total_usd += wallet.balance * EXCHANGE_RATES[code]
+        return total_usd / EXCHANGE_RATES[base]

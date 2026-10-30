@@ -16,6 +16,8 @@ from valutatrade_hub.core.usecases import (
     show_portfolio,
 )
 
+from valutatrade_hub.logging_config import setup_logging
+
 
 def print_help() -> None:
     """Печатает список доступных команд."""
@@ -159,6 +161,7 @@ HANDLERS = {
 
 def run() -> None:
     """Главный цикл: читает команды и вызывает нужные обработчики."""
+    setup_logging()
     print_help()
     while True:
         line = input(">>> ").strip()

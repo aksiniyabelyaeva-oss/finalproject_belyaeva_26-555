@@ -4,6 +4,7 @@ from datetime import datetime
 from valutatrade_hub.core.currencies import get_currency
 from valutatrade_hub.core.exceptions import ApiRequestError
 from valutatrade_hub.core.models import EXCHANGE_RATES, Portfolio, User, Wallet
+from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.database import DatabaseManager
 from valutatrade_hub.infra.settings import SettingsLoader
 
@@ -195,6 +196,7 @@ def get_rate_to_base(code: str) -> float:
     return get_rate(code, BASE_CURRENCY)["rate"]
 
 
+@log_action("BUY", get_current_user, verbose=True)
 def buy_currency(currency: str, amount: float) -> dict:
     """Покупает валюту: списывает USD и пополняет кошелёк покупаемой валюты."""
     user = get_current_user()
@@ -219,6 +221,7 @@ def buy_currency(currency: str, amount: float) -> dict:
     }
 
 
+@log_action("SELL", get_current_user, verbose=True)
 def sell_currency(currency: str, amount: float) -> dict:
     """Продаёт валюту: списывает её с кошелька и начисляет USD."""
     user = get_current_user()

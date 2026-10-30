@@ -12,6 +12,8 @@ from valutatrade_hub.core.utils import (
 
 RATES_TTL_SECONDS = 300
 
+BASE_CURRENCY = "USD"
+
 
 def user_to_dict(user: User) -> dict:
     """Упаковывает объект User в словарь для записи в JSON."""
@@ -173,3 +175,49 @@ def show_portfolio(base_currency: str = "USD") -> dict:
         rows.append({"currency": code, "balance": wallet.balance, "value": value})
         total += value
     return {"username": user.username, "base": base, "rows": rows, "total": total}
+
+
+def validate_amount(amount: float) -> None:
+    """Проверяет, что сумма — положительное число."""
+    is_number = isinstance(amount, (int, float)) and not isinstance(amount, bool)
+    if not is_number or amount <= 0:
+        raise ValueError("'amount' должен быть положительным числом")
+
+
+def get_or_create_wallet(portfolio: Portfolio, code: str) -> Wallet:
+    """Возвращает кошелёк валюты, создавая его, если его ещё нет."""
+    wallet = portfolio.get_wallet(code)
+    if wallet is None:
+        wallet = portfolio.add_currency(code)
+    return wallet
+
+
+def buy_currency(currency: str, amount: float) -> dict:
+    """Покупает валюту: списывает USD и пополняет кошелёк покупаемой валюты."""
+    user = get_current_user()
+    code = currency.strip().upper()
+    if not code:
+        raise ValueError("Код валюты не может быть пустым")
+    validate_amount(amount)
+    portfolio = load_portfolio(user.user_id)
+    wallet = get_or_create_wallet(portfolio, code)
+    balance_before = wallet.balance
+
+    rate = 1.0
+    if code != BASE_CURRENCY:
+        try:
+            rate = get_rate(code, BASE_CURRENCY)["rate"]
+        except ValueError:
+            raise ValueError(f"Не удалось получить курс для {code}→{BASE_CURRENCY}")
+        get_or_create_wallet(portfolio, BASE_CURRENCY).withdraw(amount * rate)
+
+    wallet.deposit(amount)
+    save_portfolio(portfolio)
+    return {
+        "currency": code,
+        "amount": amount,
+        "rate": rate,
+        "before": balance_before,
+        "after": wallet.balance,
+        "cost": amount * rate,
+    }

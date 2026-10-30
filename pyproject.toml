@@ -11,13 +11,14 @@ dependencies = [
     "prettytable>=3.18.0",
 ]
 
-[project.scripts]
-finalproject-belyaeva-26-555 = "finalproject_belyaeva_26_555:main"
-
 [build-system]
 requires = ["uv_build>=0.12.20,<0.13.0"]
 build-backend = "uv_build"
 
+  [tool.uv.build-backend]
+  module-name = "valutatrade_hub"
+  module-root = ""
+  
 [dependency-groups]
 dev = [
     "ruff>=0.17.1",
@@ -29,3 +30,6 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[project.scripts]
+project = "valutatrade_hub.cli.interface:run"

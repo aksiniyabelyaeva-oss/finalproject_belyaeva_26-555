@@ -1,5 +1,11 @@
 import shlex
 
+from valutatrade_hub.core.currencies import CURRENCIES
+from valutatrade_hub.core.exceptions import (
+    ApiRequestError,
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
 from valutatrade_hub.core.usecases import (
     BASE_CURRENCY,
     buy_currency,
@@ -168,5 +174,12 @@ def run() -> None:
                 print(f"Неизвестная команда '{command}'. Введите help.")
                 continue
             handler(parse_options(tokens[1:]))
+        except InsufficientFundsError as error:
+            print(error)
+        except CurrencyNotFoundError as error:
+            codes = ", ".join(CURRENCIES)
+            print(f"{error}. Поддерживаемые коды: {codes}")
+        except ApiRequestError as error:
+            print(f"{error}. Повторите попытку позже или проверьте сеть.")
         except ValueError as error:
             print(error)

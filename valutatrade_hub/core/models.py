@@ -1,7 +1,6 @@
 import hashlib
 from datetime import datetime
 
-
 # Фиксированные курсы: сколько долларов стоит 1 единица валюты
 EXCHANGE_RATES = {
     "USD": 1.0,

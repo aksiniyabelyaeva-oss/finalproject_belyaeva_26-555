@@ -4,6 +4,7 @@ from datetime import datetime
 from valutatrade_hub.core.currencies import get_currency
 from valutatrade_hub.core.exceptions import ApiRequestError
 from valutatrade_hub.core.models import EXCHANGE_RATES, Portfolio, User, Wallet
+from valutatrade_hub.core.utils import validate_amount
 from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.database import DatabaseManager
 from valutatrade_hub.infra.settings import SettingsLoader
@@ -172,13 +173,6 @@ def show_portfolio(base_currency: str = "USD") -> dict:
         rows.append({"currency": code, "balance": wallet.balance, "value": value})
         total += value
     return {"username": user.username, "base": base, "rows": rows, "total": total}
-
-
-def validate_amount(amount: float) -> None:
-    """Проверяет, что сумма — положительное число."""
-    is_number = isinstance(amount, (int, float)) and not isinstance(amount, bool)
-    if not is_number or amount <= 0:
-        raise ValueError("'amount' должен быть положительным числом")
 
 
 def get_or_create_wallet(portfolio: Portfolio, code: str) -> Wallet:

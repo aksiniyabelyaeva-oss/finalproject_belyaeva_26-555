@@ -15,7 +15,7 @@ from valutatrade_hub.core.usecases import (
     sell_currency,
     show_portfolio,
 )
-
+from valutatrade_hub.core.utils import format_rate
 from valutatrade_hub.logging_config import setup_logging
 
 
@@ -58,13 +58,6 @@ def parse_amount(text: str) -> float:
         return float(text)
     except ValueError:
         raise ValueError("'amount' должен быть положительным числом")
-
-
-def format_rate(rate: float) -> str:
-    """Форматирует курс: большие числа с 2 знаками, маленькие с 8."""
-    if rate >= 1:
-        return f"{rate:.2f}"
-    return f"{rate:.8f}"
 
 
 def handle_register(options: dict) -> None:

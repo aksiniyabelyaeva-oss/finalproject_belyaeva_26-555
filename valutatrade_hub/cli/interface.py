@@ -1,6 +1,14 @@
 import shlex
 
-from valutatrade_hub.core.usecases import login_user, register_user
+from valutatrade_hub.core.usecases import (
+    BASE_CURRENCY,
+    buy_currency,
+    get_rate,
+    login_user,
+    register_user,
+    sell_currency,
+    show_portfolio,
+)
 
 
 def print_help() -> None:
@@ -36,6 +44,21 @@ def require_option(options: dict, name: str) -> str:
     return options[name]
 
 
+def parse_amount(text: str) -> float:
+    """Превращает текст в число или сообщает об ошибке."""
+    try:
+        return float(text)
+    except ValueError:
+        raise ValueError("'amount' должен быть положительным числом")
+
+
+def format_rate(rate: float) -> str:
+    """Форматирует курс: большие числа с 2 знаками, маленькие с 8."""
+    if rate >= 1:
+        return f"{rate:.2f}"
+    return f"{rate:.8f}"
+
+
 def handle_register(options: dict) -> None:
     """Команда register."""
     username = require_option(options, "username")
@@ -55,6 +78,63 @@ def handle_login(options: dict) -> None:
     print(f"Вы вошли как '{user.username}'")
 
 
+def handle_show_portfolio(options: dict) -> None:
+    """Команда show-portfolio."""
+    data = show_portfolio(options.get("base", BASE_CURRENCY))
+    if not data["rows"]:
+        print("У вас пока нет кошельков.")
+        return
+    base = data["base"]
+    print(f"Портфель пользователя '{data['username']}' (база: {base}):")
+    for row in data["rows"]:
+        line = f"- {row['currency']}: {row['balance']:.4f}"
+        print(f"{line}  → {row['value']:,.2f} {base}")
+    print("-" * 33)
+    print(f"ИТОГО: {data['total']:,.2f} {base}")
+
+
+def handle_buy(options: dict) -> None:
+    """Команда buy."""
+    currency = require_option(options, "currency")
+    amount = parse_amount(require_option(options, "amount"))
+    result = buy_currency(currency, amount)
+    code = result["currency"]
+    print(
+        f"Покупка выполнена: {result['amount']:.4f} {code} "
+        f"по курсу {format_rate(result['rate'])} {BASE_CURRENCY}/{code}"
+    )
+    print("Изменения в портфеле:")
+    print(f"- {code}: было {result['before']:.4f} → стало {result['after']:.4f}")
+    print(f"Оценочная стоимость покупки: {result['cost']:,.2f} {BASE_CURRENCY}")
+
+
+def handle_sell(options: dict) -> None:
+    """Команда sell."""
+    currency = require_option(options, "currency")
+    amount = parse_amount(require_option(options, "amount"))
+    result = sell_currency(currency, amount)
+    code = result["currency"]
+    print(
+        f"Продажа выполнена: {result['amount']:.4f} {code} "
+        f"по курсу {format_rate(result['rate'])} {BASE_CURRENCY}/{code}"
+    )
+    print("Изменения в портфеле:")
+    print(f"- {code}: было {result['before']:.4f} → стало {result['after']:.4f}")
+    print(f"Оценочная выручка: {result['revenue']:,.2f} {BASE_CURRENCY}")
+
+
+def handle_get_rate(options: dict) -> None:
+    """Команда get-rate."""
+    from_code = require_option(options, "from").strip().upper()
+    to_code = require_option(options, "to").strip().upper()
+    data = get_rate(from_code, to_code)
+    updated = data["updated_at"].strftime("%Y-%m-%d %H:%M:%S")
+    rate_text = format_rate(data["rate"])
+    print(f"Курс {from_code}→{to_code}: {rate_text} (обновлено: {updated})")
+    reverse_text = format_rate(1 / data["rate"])
+    print(f"Обратный курс {to_code}→{from_code}: {reverse_text}")
+
+
 def handle_help(options: dict) -> None:
     """Команда help."""
     print_help()
@@ -63,6 +143,10 @@ def handle_help(options: dict) -> None:
 HANDLERS = {
     "register": handle_register,
     "login": handle_login,
+    "show-portfolio": handle_show_portfolio,
+    "buy": handle_buy,
+    "sell": handle_sell,
+    "get-rate": handle_get_rate,
     "help": handle_help,
 }
 

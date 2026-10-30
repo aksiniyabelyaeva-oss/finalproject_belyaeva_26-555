@@ -1,13 +1,16 @@
 import secrets
 from datetime import datetime
 
-from valutatrade_hub.core.models import Portfolio, User, Wallet
+from valutatrade_hub.core.models import EXCHANGE_RATES, Portfolio, User, Wallet
 from valutatrade_hub.core.utils import (
     PORTFOLIOS_FILE,
+    RATES_FILE,
     USERS_FILE,
     load_json,
     save_json,
 )
+
+RATES_TTL_SECONDS = 300
 
 
 def user_to_dict(user: User) -> dict:
@@ -90,3 +93,38 @@ def get_current_user() -> User:
     if user is None:
         raise ValueError("Сначала выполните login")
     return user
+
+
+def fetch_rate_from_stub(from_code: str, to_code: str) -> float | None:
+    """Заглушка Parser Service: считает курс по фиксированной таблице."""
+    if from_code not in EXCHANGE_RATES or to_code not in EXCHANGE_RATES:
+        return None
+    return EXCHANGE_RATES[from_code] / EXCHANGE_RATES[to_code]
+
+
+def get_rate(from_code: str, to_code: str) -> dict:
+    """Возвращает курс from→to из свежего кеша или из заглушки."""
+    from_code = from_code.strip().upper()
+    to_code = to_code.strip().upper()
+    if not from_code or not to_code:
+        raise ValueError("Код валюты не может быть пустым")
+
+    key = f"{from_code}_{to_code}"
+    rates = load_json(RATES_FILE, {})
+    cached = rates.get(key)
+    if cached is not None:
+        updated_at = datetime.fromisoformat(cached["updated_at"])
+        if (datetime.now() - updated_at).total_seconds() < RATES_TTL_SECONDS:
+            return {"rate": cached["rate"], "updated_at": updated_at}
+
+    rate = fetch_rate_from_stub(from_code, to_code)
+    if rate is None:
+        raise ValueError(
+            f"Курс {from_code}→{to_code} недоступен. Повторите попытку позже."
+        )
+    now = datetime.now()
+    rates[key] = {"rate": rate, "updated_at": now.isoformat()}
+    rates["source"] = "Stub"
+    rates["last_refresh"] = now.isoformat()
+    save_json(RATES_FILE, rates)
+    return {"rate": rate, "updated_at": now}

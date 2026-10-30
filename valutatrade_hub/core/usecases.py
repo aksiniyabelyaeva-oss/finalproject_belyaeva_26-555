@@ -67,3 +67,26 @@ def register_user(username: str, password: str) -> User:
     portfolios.append(portfolio_to_dict(Portfolio(user_id)))
     save_json(PORTFOLIOS_FILE, portfolios)
     return user
+
+_session = {"user": None}
+
+
+def login_user(username: str, password: str) -> User:
+    """Проверяет логин и пароль и запоминает вошедшего пользователя."""
+    users = load_json(USERS_FILE, [])
+    for item in users:
+        if item["username"] == username.strip():
+            user = dict_to_user(item)
+            if not user.verify_password(password):
+                raise ValueError("Неверный пароль")
+            _session["user"] = user
+            return user
+    raise ValueError(f"Пользователь '{username}' не найден")
+
+
+def get_current_user() -> User:
+    """Возвращает вошедшего пользователя или просит выполнить login."""
+    user = _session["user"]
+    if user is None:
+        raise ValueError("Сначала выполните login")
+    return user

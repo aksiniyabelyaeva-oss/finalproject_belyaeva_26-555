@@ -9,13 +9,17 @@ from valutatrade_hub.core.exceptions import (
 from valutatrade_hub.core.usecases import (
     BASE_CURRENCY,
     buy_currency,
+    get_cached_rates,
     get_rate,
     login_user,
     register_user,
     sell_currency,
     show_portfolio,
+    start_rates_scheduler,
+    update_rates,
 )
 from valutatrade_hub.core.utils import format_rate
+from valutatrade_hub.infra.settings import SettingsLoader
 from valutatrade_hub.logging_config import setup_logging
 
 
@@ -28,6 +32,9 @@ def print_help() -> None:
     print("  buy --currency <код> --amount <число>")
     print("  sell --currency <код> --amount <число>")
     print("  get-rate --from <код> --to <код>")
+    print("  update-rates [--source coingecko|exchangerate]")
+    print("  show-rates [--currency <код>] [--top <N>] [--base <код>]")
+    print("  schedule-rates [--interval <секунды>]")
     print("  help, exit")
 
 
@@ -136,6 +143,64 @@ def handle_get_rate(options: dict) -> None:
     print(f"Обратный курс {to_code}→{from_code}: {reverse_text}")
 
 
+def parse_positive_int(text: str, name: str) -> int:
+    """Превращает текст в положительное целое число или сообщает об ошибке."""
+    try:
+        value = int(text)
+    except ValueError:
+        value = 0
+    if value <= 0:
+        raise ValueError(f"'{name}' должен быть положительным целым числом")
+    return value
+
+
+def print_update_report(report: dict) -> None:
+    """Печатает шаги обновления курсов и итог."""
+    for step in report["steps"]:
+        print(step)
+    if report["errors"]:
+        settings = SettingsLoader()
+        log_path = f"{settings.get('log_dir')}/{settings.get('parser_log_file')}"
+        print(f"Update completed with errors. Check {log_path} for details.")
+    else:
+        print(
+            f"Update successful. Total rates updated: {report['total']}. "
+            f"Last refresh: {report['last_refresh']}"
+        )
+
+
+def handle_update_rates(options: dict) -> None:
+    """Команда update-rates."""
+    print_update_report(update_rates(options.get("source")))
+
+
+def handle_show_rates(options: dict) -> None:
+    """Команда show-rates."""
+    top = options.get("top")
+    top_value = parse_positive_int(top, "top") if top is not None else None
+    data = get_cached_rates(
+        currency=options.get("currency"),
+        top=top_value,
+        base=options.get("base"),
+    )
+    print(f"Rates from cache (updated at {data['updated_at']}):")
+    if not data["rows"]:
+        print("Подходящих курсов в кеше нет.")
+    for pair, rate in data["rows"]:
+        print(f"- {pair}: {format_rate(rate)}")
+
+
+def handle_schedule_rates(options: dict) -> None:
+    """Команда schedule-rates: периодическое обновление до нажатия Ctrl+C."""
+    default_interval = SettingsLoader().get("parser_interval_seconds")
+    interval = parse_positive_int(
+        options.get("interval", str(default_interval)), "interval"
+    )
+    print(f"Автообновление курсов каждые {interval} с. Остановка: Ctrl+C")
+    start_rates_scheduler(interval, print_update_report)
+    print("Автообновление остановлено.")
+
+
 def handle_help(options: dict) -> None:
     """Команда help."""
     print_help()
@@ -148,6 +213,9 @@ HANDLERS = {
     "buy": handle_buy,
     "sell": handle_sell,
     "get-rate": handle_get_rate,
+    "update-rates": handle_update_rates,
+    "show-rates": handle_show_rates,
+    "schedule-rates": handle_schedule_rates,
     "help": handle_help,
 }
 
